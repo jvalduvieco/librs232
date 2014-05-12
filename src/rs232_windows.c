@@ -215,9 +215,35 @@ rs232_in_qeue(struct rs232_port_t *p, unsigned int *in_bytes)
 RS232_LIB void
 rs232_in_qeue_clear(struct rs232_port_t *p)
 {
-	/* TODO */
-	UNREFERENCED_PARAMETER(p);
-	DBG("%s\n", "sorry, not implemented yet");
+	unsigned int blen = 0;
+
+	DBG("p=%p p->pt=%p\n", (void *)p, p->pt);
+
+	if (RS232_PORT_CLOSED == rs232_port_open( p))
+	{
+		return;
+    }
+	rs232_in_qeue( p, &blen);
+	if (0 < blen)
+    {
+		unsigned char *buf;
+    	struct rs232_windows_t *wx = p->pt;
+    	unsigned int rt = wx->r_timeout;
+
+		buf = malloc( blen * sizeof(unsigned char*)+1);
+		if (NULL == buf)
+		{
+			return;
+        }
+    	if (RS232_ERR_NOERROR == port_timeout( p, 1, wx->w_timeout))
+        {
+        	unsigned int r;
+
+        	ReadFile( wx->fd, buf, blen, &r, NULL);
+        }
+    	port_timeout( p, rt, wx->w_timeout);
+		free( buf);
+	}
 }
 
 RS232_LIB unsigned int
@@ -252,15 +278,40 @@ rs232_read_timeout_forced(struct rs232_port_t *p, unsigned char *buf,
 		   unsigned int buf_len, unsigned int *read_len,
 		   unsigned int timeout)
 {
-	UNREFERENCED_PARAMETER(p);
-	UNREFERENCED_PARAMETER(buf);
-	UNREFERENCED_PARAMETER(timeout);
-	UNREFERENCED_PARAMETER(read_len);
-	UNREFERENCED_PARAMETER(buf_len);
+	unsigned int r = 0;
+	struct rs232_windows_t *wx = p->pt;
+	unsigned int rt = wx->r_timeout;
 
-	/* TODO */
-	DBG("%s\n", "sorry, not implemented yet");
-	return RS232_ERR_UNKNOWN;
+	DBG("p=%p p->pt=%p buf_len: %d timeout: %d\n", (void *)p, p->pt, buf_len, timeout);
+
+	if (RS232_PORT_CLOSED == rs232_port_open( p))
+	{
+		return RS232_ERR_PORT_CLOSED;
+    }
+	*read_len = 0;
+	if (RS232_ERR_NOERROR != port_timeout( p, timeout, wx->w_timeout))
+	{
+        return RS232_ERR_UNKNOWN;
+    }
+	if (!ReadFile( wx->fd, buf, buf_len, &r, NULL))
+    {
+		*read_len = 0;
+		DBG("ReadFile() %s\n", last_error());
+		return RS232_ERR_READ;
+	}
+	if (RS232_ERR_NOERROR != port_timeout( p, rt, wx->w_timeout))
+	{
+		return RS232_ERR_UNKNOWN;
+    }
+    if (buf_len != r)
+    {
+		DBG("%s\n", "RS232_ERR_TIMEOUT");
+		return RS232_ERR_TIMEOUT;
+    }
+	DBG("read_len=%d hex='%s' ascii='%s'\n", r, rs232_hex_dump(buf, r),
+	    rs232_ascii_dump(buf, r));
+	*read_len = r;
+	return RS232_ERR_NOERROR;
 }
 
 RS232_LIB unsigned int
